@@ -135,11 +135,22 @@ const getStudentsByStaffId = async (req, res) => {
     console.log('========================================');
 
     try {
-        const { staffid } = req.params;
-        console.log('Staff ID:', staffid);
+        // ✅ FIX: Handle both parameter names (staffid and teacherId)
+        const staffId = req.params.staffid || req.params.teacherId;
+        
+        console.log('Staff ID:', staffId);
+        console.log('All params:', JSON.stringify(req.params));
+
+        if (!staffId) {
+            console.log('❌ No staff ID found in parameters');
+            return res.status(400).json({
+                success: false,
+                message: 'Staff ID is required'
+            });
+        }
 
         // Find class where this staff is class teacher
-        const classDoc = await ClassModel.findOne({ class_teacher: staffid })
+        const classDoc = await ClassModel.findOne({ class_teacher: staffId })
             .lean();
 
         if (!classDoc) {
@@ -173,13 +184,13 @@ const getStudentsByStaffId = async (req, res) => {
 
     } catch (error) {
         console.error('❌ GET STUDENTS ERROR:', error.message);
+        console.error('Stack:', error.stack);
         return res.status(500).json({
             success: false,
             message: 'Server error'
         });
     }
 };
-
 // ============================================
 // POST STUDENTS BY STAFF ID (legacy)
 // ============================================
