@@ -283,30 +283,42 @@ const saveTodayAttendance = async (req, res) => {
 };
 const getTodayStudentsByStaffId = async (req, res) => {
     console.log('\n========================================');
-    console.log('📊 GET ATTENDANCE BY CLASS REQUEST');
+    console.log('📅 GET TODAY ATTENDANCE BY STAFF ID');
     console.log('========================================');
     console.log('Timestamp:', new Date().toISOString());
 
     try {
-        const { classid } = req.params;
+        // ✅ Handle both parameter names (staffid and teacherId)
+        const staffId = req.params.staffid || req.params.teacherId;
         const { date, startDate, endDate } = req.query;
 
-        console.log('Class ID:', classid);
+        console.log('Staff ID:', staffId);
 
-        // ✅ GET CLASS INFO
-        const classDoc = await ClassModel.findById(classid).select('class_name').lean();
-        if (!classDoc) {
-            console.log('❌ Class not found');
-            return res.status(404).json({
+        if (!staffId) {
+            console.log('❌ No staff ID found in parameters');
+            return res.status(400).json({
                 success: false,
-                message: 'Class not found'
+                message: 'Staff ID is required'
             });
         }
 
-        console.log(`✅ Class: ${classDoc.class_name}`);
+        // ✅ FIND CLASS WHERE THIS STAFF IS CLASS TEACHER
+        const classDoc = await ClassModel.findOne({ class_teacher: staffId })
+            .select('_id class_name')
+            .lean();
+
+        if (!classDoc) {
+            console.log('❌ No class found for this staff');
+            return res.status(404).json({
+                success: false,
+                message: 'No class assigned to this staff'
+            });
+        }
+
+        console.log(`✅ Class: ${classDoc.class_name} (${classDoc._id})`);
 
         // ✅ GET ALL STUDENTS IN CLASS
-        const students = await Student.find({ class_id: classid })
+        const students = await Student.find({ class_id: classDoc._id })
             .select('name rollnumber photo')
             .lean();
 
@@ -314,7 +326,7 @@ const getTodayStudentsByStaffId = async (req, res) => {
 
         // ✅ DETERMINE DATE FILTER
         let attendanceDate;
-        let query = { class_id: classid };
+        let query = { class_id: classDoc._id };
 
         if (date) {
             // Specific date
