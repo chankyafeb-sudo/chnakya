@@ -44,12 +44,14 @@ const getDashboardOverview = async (req, res) => {
     // Get today's date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
 
     // Get today's attendance
     console.log('📅 Fetching today\'s attendance...');
     const todayAttendance = await Attendance.find({
-      school_id,
-      date: today
+      class_id: { $exists: true },
+      date: { $gte: today, $lte: todayEnd }
     });
 
     const activeStudents = todayAttendance.filter(a => a.status === 'present').length;
@@ -61,7 +63,7 @@ const getDashboardOverview = async (req, res) => {
     console.log(`Today: ${activeStudents} present, ${absentToday} absent (${todayAttendancePercentage}%)`);
 
     // Get overall attendance
-    const allStudents = await Student.find({ school_id }).select('class_id');
+    const allStudents = await Student.find({ school_id }).select('_id');
     const studentAttendance = await Promise.all(
       allStudents.map(async (student) => {
         const records = await Attendance.find({ student_id: student._id });
@@ -119,24 +121,24 @@ const getDashboardOverview = async (req, res) => {
     });
 
     // Get top performing class (by attendance)
-    const classes = await ClassModel.find({ school_id }).populate('students');
+    const classes = await ClassModel.find({ school_id });
     let topPerformingClass = 'N/A';
     let lowestAttendanceClass = 'N/A';
     let highestAttendance = 0;
     let lowestAttendance = 100;
 
     for (const classDoc of classes) {
-      const classStudents = classDoc.students;
-      if (classStudents.length === 0) continue;
+      const classStudents = await Student.countDocuments({ class_id: classDoc._id });
+      if (classStudents === 0) continue;
 
       const classAttendanceRecords = await Attendance.find({
         class_id: classDoc._id,
-        date: today
+        date: { $gte: today, $lte: todayEnd }
       });
 
       const presentCount = classAttendanceRecords.filter(r => r.status === 'present').length;
-      const attendancePercent = classStudents.length > 0
-        ? (presentCount / classStudents.length) * 100
+      const attendancePercent = classStudents > 0
+        ? (presentCount / classStudents) * 100
         : 0;
 
       if (attendancePercent > highestAttendance) {
@@ -244,7 +246,7 @@ const getClassData = async (req, res) => {
     const classDoc = await ClassModel.findOne({
       school_id,
       class_name
-    }).populate('students class_teacher');
+    }).populate('class_teacher');
 
     if (!classDoc) {
       console.log('❌ Class not found');
@@ -255,7 +257,6 @@ const getClassData = async (req, res) => {
     }
 
     console.log(`✅ Class found: ${classDoc.class_name}`);
-    console.log(`Students: ${classDoc.students.length}`);
 
     const students = await Student.find({ class_id: classDoc._id, school_id });
 
@@ -264,13 +265,17 @@ const getClassData = async (req, res) => {
     const maleStudents = students.filter(s => s.gender === 'Male').length;
     const femaleStudents = students.filter(s => s.gender === 'Female').length;
 
+    console.log(`Students: ${totalStudents}`);
+
     // Today's attendance
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
     
     const todayAttendance = await Attendance.find({
       class_id: classDoc._id,
-      date: today
+      date: { $gte: today, $lte: todayEnd }
     });
 
     const presentToday = todayAttendance.filter(a => a.status === 'present').length;
@@ -307,7 +312,7 @@ const getClassData = async (req, res) => {
       : 0;
 
     // Performance distribution (placeholder)
-    const excellent = students.filter(s => true).length; // Can add marks logic
+    const excellent = students.filter(s => true).length;
     const good = 0;
     const average = 0;
 
@@ -317,13 +322,13 @@ const getClassData = async (req, res) => {
       name: s.name,
       rollNumber: s.rollnumber,
       photo: s.photo,
-      attendancePercentage: 0, // Calculate if needed
+      attendancePercentage: 0,
       totalFees: s.fee?.total_amount || 0,
       paidFees: s.fee?.paid_amount || 0,
       pendingFees: s.fee?.pending_amount || 0,
       paymentStatus: s.fee?.paid_amount >= s.fee?.total_amount ? 'Paid' 
         : s.fee?.paid_amount > 0 ? 'Partial' : 'Unpaid',
-      averageMarks: 0 // Placeholder
+      averageMarks: 0
     }));
 
     console.log('✅ Class data compiled');
@@ -386,8 +391,13 @@ const getAttendanceReports = async (req, res) => {
     // Today's attendance
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
 
-    const todayRecords = await Attendance.find({ school_id, date: today });
+    const todayRecords = await Attendance.find({ 
+      class_id: { $exists: true },
+      date: { $gte: today, $lte: todayEnd }
+    });
     const presentToday = todayRecords.filter(a => a.status === 'present').length;
     const absentToday = todayRecords.filter(a => a.status === 'absent').length;
     const todayAttendancePercentage = totalStudents > 0
@@ -395,7 +405,7 @@ const getAttendanceReports = async (req, res) => {
       : 0;
 
     // Overall attendance
-    const allRecords = await Attendance.find({ school_id });
+    const allRecords = await Attendance.find({ class_id: { $exists: true } });
     const presentCount = allRecords.filter(a => a.status === 'present').length;
     const averageAttendance = allRecords.length > 0
       ? ((presentCount / allRecords.length) * 100).toFixed(1)
@@ -409,7 +419,7 @@ const getAttendanceReports = async (req, res) => {
       const classStudents = await Student.countDocuments({ class_id: classDoc._id });
       const classToday = await Attendance.find({
         class_id: classDoc._id,
-        date: today
+        date: { $gte: today, $lte: todayEnd }
       });
 
       const classPresentToday = classToday.filter(a => a.status === 'present').length;
@@ -436,8 +446,13 @@ const getAttendanceReports = async (req, res) => {
       const date = new Date();
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(date);
+      dateEnd.setHours(23, 59, 59, 999);
 
-      const dayRecords = await Attendance.find({ school_id, date });
+      const dayRecords = await Attendance.find({ 
+        class_id: { $exists: true },
+        date: { $gte: date, $lte: dateEnd }
+      });
       const dayPresent = dayRecords.filter(a => a.status === 'present').length;
       const dayTotal = dayRecords.length;
 
@@ -479,15 +494,18 @@ const getAttendanceReports = async (req, res) => {
     }
 
     // Attendance distribution
-    const excellent = students.filter(async (s) => {
-      const records = await Attendance.find({ student_id: s._id });
-      if (records.length === 0) return false;
-      const present = records.filter(r => r.status === 'present').length;
-      return (present / records.length) * 100 >= 90;
-    }).length;
+    let excellent = 0;
+    let good = 0;
+    let poor = defaulters.length;
 
-    const good = students.length - excellent - defaulters.length;
-    const poor = defaulters.length;
+    for (const student of students) {
+      const records = await Attendance.find({ student_id: student._id });
+      if (records.length === 0) continue;
+      const present = records.filter(r => r.status === 'present').length;
+      const percentage = (present / records.length) * 100;
+      if (percentage >= 90) excellent++;
+      else if (percentage >= 75) good++;
+    }
 
     const classList = classes.map(c => c.class_name);
 
@@ -1008,6 +1026,10 @@ const getFeesOverview = async (req, res) => {
     });
   }
 };
+
+// ============================================
+// GET ALL STAFF
+// ============================================
 const getAllStaff = async (req, res) => {
   console.log('\n========================================');
   console.log('👨‍🏫 GET ALL STAFF REQUEST');
@@ -1023,7 +1045,7 @@ const getAllStaff = async (req, res) => {
 
     // Apply filters
     if (role) query.role = role;
-    if (department) query.subject = department; // Using subject field for department
+    if (department) query.subject = department;
     if (status) {
       query.isActive = status === 'Active';
     }
@@ -1044,12 +1066,12 @@ const getAllStaff = async (req, res) => {
 
     // Calculate summary
     const totalStaff = staff.length;
-    const totalTeachers = staff.filter(s => s.subject).length; // Teachers have subject
+    const totalTeachers = staff.filter(s => s.subject).length;
     const adminStaff = staff.filter(s => !s.subject && s.name?.toLowerCase().includes('principal')).length;
     const supportStaff = totalStaff - totalTeachers - adminStaff;
 
-    // Today's attendance (placeholder - you can implement staff attendance)
-    const presentToday = totalStaff; // Default all present
+    // Today's attendance (placeholder)
+    const presentToday = totalStaff;
     const absentToday = 0;
 
     // Get class assignments for each staff
@@ -1060,7 +1082,7 @@ const getAllStaff = async (req, res) => {
       // Find if class teacher
       const classTeacherOf = classes.find(c => c.class_teacher?.toString() === s._id.toString());
       
-      // Find assigned classes (can expand based on timetable)
+      // Find assigned classes
       const assignedClasses = classTeacherOf ? [classTeacherOf.class_name] : [];
 
       return {
@@ -1113,6 +1135,7 @@ const getAllStaff = async (req, res) => {
     });
   }
 };
+
 module.exports = {
   getDashboardOverview,
   getClassList,
