@@ -164,9 +164,9 @@ const getStudentsByStaffId = async (req, res) => {
         console.log(`✅ Found class: ${classDoc.class_name}`);
         console.log(`📚 Class ID: ${classDoc._id}`);
 
-        // Get all students in this class
+        // Get all students in this class (minimal fields)
         const students = await Student.find({ class_id: classDoc._id })
-            .select('name rollnumber photo gender mobile email dob address father_name mother_name')
+            .select('name rollnumber photo')
             .lean();
 
         console.log(`✅ Found ${students.length} students`);
@@ -198,44 +198,32 @@ const getStudentsByStaffId = async (req, res) => {
             };
         });
 
-        // ✅ MERGE: Students + Today Attendance
-        const studentsWithAttendance = students.map(student => {
-            const attendance = attendanceMap[student._id.toString()];
+        // ✅ BUILD ATTENDANCE ARRAY (minimal format)
+        const attendance = students.map(student => {
+            const attendanceData = attendanceMap[student._id.toString()];
             
             return {
-                _id: student._id,
+                student_id: student._id,
                 name: student.name,
                 rollnumber: student.rollnumber,
                 photo: student.photo,
-                gender: student.gender,
-                mobile: student.mobile,
-                email: student.email,
-                dob: student.dob,
-                address: student.address,
-                father_name: student.father_name,
-                mother_name: student.mother_name,
-                // ✅ TODAY ATTENDANCE
-                attendance: {
-                    status: attendance ? attendance.status : 'not_marked',
-                    notes: attendance ? attendance.notes : '',
-                    marked: !!attendance,
-                    date: today.toISOString().split('T')[0]
-                }
+                status: attendanceData ? attendanceData.status : 'not_marked',
+                notes: attendanceData ? attendanceData.notes : '',
+                marked: !!attendanceData
             };
         });
 
-        console.log('📦 STUDENTS WITH ATTENDANCE DATA SENDING TO FRONTEND:');
-        console.log(JSON.stringify(studentsWithAttendance, null, 2));
+        console.log('📦 ATTENDANCE DATA SENDING TO FRONTEND:');
+        console.log(JSON.stringify(attendance, null, 2));
         console.log('========================================\n');
 
         return res.status(200).json({
             success: true,
             className: classDoc.class_name,
-            classId: classDoc._id,
             date: today.toISOString().split('T')[0],
-            count: studentsWithAttendance.length,
+            count: attendance.length,
             markedCount: attendanceRecords.length,
-            students: studentsWithAttendance
+            attendance: attendance
         });
 
     } catch (error) {
