@@ -6,7 +6,8 @@ const {
   getStudentsByStaffId,
   postStudentsByStaffId,
   saveTodayAttendance,
-  getAttendanceByClassId
+  getAttendanceByClassId,
+  getTodayStudentsByStaffId
 } = require("../controllers/staff/attendanceController");
 const apiLimiter = require("../middleware/rateLimiter");
 
@@ -26,7 +27,7 @@ router.post("/staff/:staffid/class-students", postStudentsByStaffId);
 router.get("/staff/class/:classid", getAttendanceByClassId);
 
 // ✅ TODAY ATTENDANCE - Both GET and POST
-router.get("/class/:staffid/today", getStudentsByStaffId); // Returns students list
+router.get("/class/:staffid/today", getTodayStudentsByStaffId); // Returns students list
 router.post("/staff/:teacherId/submit", saveTodayAttendance); // Saves attendance
 
 module.exports = router;

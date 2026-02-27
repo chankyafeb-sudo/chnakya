@@ -281,11 +281,127 @@ const saveTodayAttendance = async (req, res) => {
         });
     }
 };
+const getTodayStudentsByStaffId = async (req, res) => {
+    console.log('\n========================================');
+    console.log('📊 GET ATTENDANCE BY CLASS REQUEST');
+    console.log('========================================');
+    console.log('Timestamp:', new Date().toISOString());
 
+    try {
+        const { classid } = req.params;
+        const { date, startDate, endDate } = req.query;
+
+        console.log('Class ID:', classid);
+
+        // ✅ GET CLASS INFO
+        const classDoc = await ClassModel.findById(classid).select('class_name').lean();
+        if (!classDoc) {
+            console.log('❌ Class not found');
+            return res.status(404).json({
+                success: false,
+                message: 'Class not found'
+            });
+        }
+
+        console.log(`✅ Class: ${classDoc.class_name}`);
+
+        // ✅ GET ALL STUDENTS IN CLASS
+        const students = await Student.find({ class_id: classid })
+            .select('name rollnumber photo')
+            .lean();
+
+        console.log(`👥 Total students in class: ${students.length}`);
+
+        // ✅ DETERMINE DATE FILTER
+        let attendanceDate;
+        let query = { class_id: classid };
+
+        if (date) {
+            // Specific date
+            attendanceDate = new Date(date);
+            attendanceDate.setHours(0, 0, 0, 0);
+            const dateEnd = new Date(attendanceDate);
+            dateEnd.setHours(23, 59, 59, 999);
+            query.date = { $gte: attendanceDate, $lte: dateEnd };
+            console.log('Date filter:', attendanceDate.toISOString().split('T')[0]);
+        } else if (startDate && endDate) {
+            // Date range
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+            query.date = { $gte: start, $lte: end };
+            console.log('Date range:', start, 'to', end);
+            attendanceDate = start; // Use start date for response
+        } else {
+            // Default: Today
+            attendanceDate = new Date();
+            attendanceDate.setHours(0, 0, 0, 0);
+            const dateEnd = new Date(attendanceDate);
+            dateEnd.setHours(23, 59, 59, 999);
+            query.date = { $gte: attendanceDate, $lte: dateEnd };
+            console.log('Default to today:', attendanceDate.toISOString().split('T')[0]);
+        }
+
+        // ✅ GET ATTENDANCE RECORDS
+        const attendanceRecords = await Attendance.find(query)
+            .select('student_id status notes date')
+            .lean();
+
+        console.log(`✅ Found ${attendanceRecords.length} attendance records`);
+
+        // ✅ CREATE ATTENDANCE MAP
+        const attendanceMap = {};
+        attendanceRecords.forEach(record => {
+            attendanceMap[record.student_id.toString()] = {
+                status: record.status,
+                notes: record.notes || ''
+            };
+        });
+
+        // ✅ MERGE: Students + Attendance
+        const attendance = students.map(student => {
+            const attendanceData = attendanceMap[student._id.toString()];
+            
+            return {
+                student_id: student._id,
+                name: student.name,
+                rollnumber: student.rollnumber,
+                photo: student.photo,
+                status: attendanceData ? attendanceData.status : 'not_marked',
+                notes: attendanceData ? attendanceData.notes : '',
+                marked: !!attendanceData
+            };
+        });
+
+        console.log('📦 ATTENDANCE DATA SENDING TO FRONTEND:');
+        console.log(JSON.stringify(attendance, null, 2));
+        console.log('========================================\n');
+
+        return res.status(200).json({
+            success: true,
+            className: classDoc.class_name,
+            date: attendanceDate.toISOString().split('T')[0],
+            count: attendance.length,
+            markedCount: attendanceRecords.length,
+            attendance: attendance
+        });
+
+    } catch (error) {
+        console.error('❌ GET ATTENDANCE ERROR:', error.message);
+        console.error('Stack:', error.stack);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
 module.exports = {
     markAttendance,
     getAttendanceByClassId,
     getStudentsByStaffId,
     postStudentsByStaffId,
-    saveTodayAttendance
+    saveTodayAttendance,
+    getTodayStudentsByStaffId
 };
