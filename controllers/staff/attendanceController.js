@@ -238,11 +238,14 @@ const saveTodayAttendance = async (req, res) => {
 
         const attendanceDate = new Date(date);
         attendanceDate.setHours(0, 0, 0, 0);
+        // ✅ FIX: Create date range for delete
+        const dateEnd = new Date(attendanceDate);
+        dateEnd.setHours(23, 59, 59, 999);
 
-        // Delete existing attendance for this date and class
+        // ✅ FIX: Delete using date range
         const deleted = await Attendance.deleteMany({
             class_id: classId,
-            date: attendanceDate
+            date: { $gte: attendanceDate, $lte: dateEnd }
         });
 
         console.log(`🗑️  Cleared ${deleted.deletedCount} old attendance records`);
@@ -261,6 +264,7 @@ const saveTodayAttendance = async (req, res) => {
         const saved = await Attendance.insertMany(attendanceRecords);
 
         console.log(`✅ Saved ${saved.length} attendance records`);
+        console.log('Sample saved record:', saved[0]); // ✅ FIX: Log to verify
         console.log('========================================\n');
 
         return res.status(200).json({
