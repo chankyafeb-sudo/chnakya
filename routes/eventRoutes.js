@@ -1,4 +1,3 @@
-// routes/eventRoutes.js
 const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
@@ -6,24 +5,22 @@ const apiLimiter = require("../middleware/rateLimiter");
 const upload = require("../utils/multerCloudinary");
 
 const {
-  getEventsByStudentId,
+  getEventsByUserId,  // ✅ Universal controller
   getEventById,
 } = require("../controllers/student/eventController");
 
 const { 
   postEventBySchoolId,
-  getEventsBySchoolId  // ✅ NEW: Get events by school ID
 } = require("../controllers/staff/eventController");
 
 router.use(apiLimiter);
 router.use(authMiddleware);
 
-// ✅ Student routes
-router.get("/student/:studentid", getEventsByStudentId);
+// ✅ SAME ROUTE - SAB USERS USE KARENGE (Student/Staff/Principal)
+router.get("/student/:studentid", getEventsByUserId);
 
-// ✅ Staff routes
+// ✅ Staff create event
 router.post("/staff/:schoolid", upload.single("image"), postEventBySchoolId);
-router.get("/school/:schoolid", getEventsBySchoolId); // ✅ NEW ROUTE
 
 // ✅ Single event by ID
 router.get("/:eventid", getEventById);

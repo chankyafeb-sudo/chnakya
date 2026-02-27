@@ -1,60 +1,94 @@
 const Event = require('../../models/event');
 const Student = require('../../models/student');
+const Staff = require('../../models/staff');
+const School = require('../../models/school');  // ✅ For Principal check
 
-// GET events - IGNORES URL parameter, uses TOKEN userId
-const getEventsByStudentId = async (req, res) => {
+// ✅ UNIVERSAL GET EVENTS - Works for Student, Staff & Principal
+const getEventsByUserId = async (req, res) => {
     console.log('\n========================================');
-    console.log('🎉 GET EVENTS REQUEST');
+    console.log('🎉 GET EVENTS REQUEST (UNIVERSAL)');
     console.log('========================================');
     console.log('Timestamp:', new Date().toISOString());
     
     try {
-        // ✅ IGNORE URL parameter, use TOKEN userId
-        const studentId = req.userId; // From token (authMiddleware)
-        console.log('Student ID from token:', studentId);
+        // ✅ Get userId from token (ignores URL parameter)
+        const userId = req.userId; // From token (authMiddleware)
+        console.log('User ID from token:', userId);
         console.log('URL parameter (ignored):', req.params.studentid);
 
-        if (!studentId) {
+        if (!userId) {
             console.log('❌ No token userId');
             return res.status(401).json({ success: false, error: 'User not authenticated' });
         }
 
-        // Get student to find school_id
-        const student = await Student.findById(studentId).select('school_id name class_id').lean();
-        
-        if (!student) {
-            console.log('❌ Student not found for ID:', studentId);
+        let schoolId = null;
+        let userName = null;
+        let userType = null;
+
+        // ✅ TRY 1: Check if Student
+        console.log('🔍 Checking if user is Student...');
+        const student = await Student.findById(userId).select('school_id name').lean();
+        if (student && student.school_id) {
+            schoolId = student.school_id;
+            userName = student.name;
+            userType = 'Student';
+            console.log(`✅ User is Student: ${userName}`);
+        }
+
+        // ✅ TRY 2: Check if Staff (if not student)
+        if (!schoolId) {
+            console.log('🔍 Checking if user is Staff...');
+            const staff = await Staff.findById(userId).select('school_id name').lean();
+            if (staff && staff.school_id) {
+                schoolId = staff.school_id;
+                userName = staff.name;
+                userType = 'Staff';
+                console.log(`✅ User is Staff: ${userName}`);
+            }
+        }
+
+        // ✅ TRY 3: Check if Principal (subdocument in School)
+        if (!schoolId) {
+            console.log('🔍 Checking if user is Principal...');
+            const school = await School.findOne({ 'principal._id': userId })
+                .select('_id principal.name')
+                .lean();
+            
+            if (school && school.principal) {
+                schoolId = school._id;
+                userName = school.principal.name;
+                userType = 'Principal';
+                console.log(`✅ User is Principal: ${userName}`);
+            }
+        }
+
+        // ❌ User not found in any model
+        if (!schoolId) {
+            console.log('❌ User not found in Student/Staff/Principal');
             return res.status(404).json({ 
                 success: false, 
-                error: 'Student not found'
+                error: 'User not found or not assigned to any school'
             });
         }
 
-        if (!student.school_id) {
-            console.log('❌ Student has no school_id');
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Student not assigned to any school'
-            });
-        }
+        console.log(`👤 User Type: ${userType}`);
+        console.log(`👤 User Name: ${userName}`);
+        console.log(`🏫 School ID: ${schoolId}`);
 
-        console.log(`✅ Student: ${student.name}`);
-        console.log(`🏫 School ID: ${student.school_id}`);
-        console.log(`📚 Class ID: ${student.class_id}`);
-
-        // Get all events for this school (Event model: school_id field)
-        const events = await Event.find({ school_id: student.school_id })
+        // ✅ Get all events for this school
+        const events = await Event.find({ school_id: schoolId })
             .select('-__v')
             .sort({ date: 1 })
             .lean();
 
-        console.log(`✅ Found ${events.length} events for school ${student.school_id}`);
+        console.log(`✅ Found ${events.length} events for school ${schoolId}`);
         console.log('📦 EVENTS DATA SENDING TO FRONTEND:');
         console.log(JSON.stringify(events, null, 2));
         console.log('========================================\n');
 
         return res.status(200).json({
             success: true,
+            userType: userType,
             count: events.length,
             events: events
         });
@@ -66,6 +100,7 @@ const getEventsByStudentId = async (req, res) => {
     }
 };
 
+// ✅ GET EVENT BY ID
 const getEventById = async (req, res) => {
     console.log('\n🎉 GET EVENT BY ID');
     console.log('Event ID:', req.params.eventid);
@@ -91,6 +126,6 @@ const getEventById = async (req, res) => {
 };
 
 module.exports = {
-    getEventsByStudentId,
+    getEventsByUserId,
     getEventById
 };
