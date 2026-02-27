@@ -39,6 +39,22 @@ const login = async (req, res) => {
 
     console.log('✅ Password verified');
 
+    // ✅ FIND CLASS WHERE THIS STAFF IS CLASS TEACHER
+    console.log('🏫 Finding assigned class...');
+    const ClassModel = require('../../models/class');
+    const assignedClass = await ClassModel.findOne({ class_teacher: staff._id }).lean();
+    
+    let classInfo = null;
+    if (assignedClass) {
+      classInfo = {
+        class_id: assignedClass._id,
+        class_name: assignedClass.class_name
+      };
+      console.log(`✅ Class teacher of: ${assignedClass.class_name} (ID: ${assignedClass._id})`);
+    } else {
+      console.log('⚠️  No class assigned as class teacher');
+    }
+
     console.log('🎫 Generating token...');
     const token = generateToken(staff._id);
 
@@ -60,7 +76,10 @@ const login = async (req, res) => {
         subject: staff.subject,
         photo: staff.photo,
         school_id: staff.school_id?._id,
-        school_name: staff.school_id?.name
+        school_name: staff.school_id?.name,
+        // ✅ CLASS INFO ADDED
+        class_id: classInfo?.class_id || null,
+        class_name: classInfo?.class_name || null
       }
     });
 
@@ -70,7 +89,6 @@ const login = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
-
 // STAFF LOGOUT
 const logout = async (req, res) => {
   console.log('\n========================================');
