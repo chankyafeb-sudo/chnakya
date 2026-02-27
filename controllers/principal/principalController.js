@@ -1008,7 +1008,111 @@ const getFeesOverview = async (req, res) => {
     });
   }
 };
+const getAllStaff = async (req, res) => {
+  console.log('\n========================================');
+  console.log('👨‍🏫 GET ALL STAFF REQUEST');
+  console.log('========================================');
+  console.log('School ID:', req.params.school_id);
+  console.log('Query:', req.query);
+  
+  try {
+    const { school_id } = req.params;
+    const { role, department, searchQuery, status } = req.query;
 
+    let query = { school_id };
+
+    // Apply filters
+    if (role) query.role = role;
+    if (department) query.subject = department; // Using subject field for department
+    if (status) {
+      query.isActive = status === 'Active';
+    }
+
+    console.log('🔍 Fetching staff with filters:', query);
+
+    let staff = await Staff.find(query).lean();
+
+    // Search query filter
+    if (searchQuery) {
+      const searchLower = searchQuery.toLowerCase();
+      staff = staff.filter(s => 
+        s.name?.toLowerCase().includes(searchLower) ||
+        s.username?.toLowerCase().includes(searchLower) ||
+        s.subject?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Calculate summary
+    const totalStaff = staff.length;
+    const totalTeachers = staff.filter(s => s.subject).length; // Teachers have subject
+    const adminStaff = staff.filter(s => !s.subject && s.name?.toLowerCase().includes('principal')).length;
+    const supportStaff = totalStaff - totalTeachers - adminStaff;
+
+    // Today's attendance (placeholder - you can implement staff attendance)
+    const presentToday = totalStaff; // Default all present
+    const absentToday = 0;
+
+    // Get class assignments for each staff
+    const classes = await ClassModel.find({ school_id }).lean();
+    
+    // Build staff data array
+    const staffData = await Promise.all(staff.map(async (s) => {
+      // Find if class teacher
+      const classTeacherOf = classes.find(c => c.class_teacher?.toString() === s._id.toString());
+      
+      // Find assigned classes (can expand based on timetable)
+      const assignedClasses = classTeacherOf ? [classTeacherOf.class_name] : [];
+
+      return {
+        staffId: s._id,
+        name: s.name || 'Unknown',
+        role: s.subject ? 'Teacher' : (s.name?.toLowerCase().includes('principal') ? 'Admin' : 'Support Staff'),
+        department: s.subject || 'Administration',
+        photo: s.photo || 'https://via.placeholder.com/150',
+        email: s.email || '',
+        phone: s.mobile || '',
+        joiningDate: s.createdAt ? s.createdAt.toISOString().split('T')[0] : null,
+        experience: s.experience || '0 years',
+        qualification: s.about || 'Not specified',
+        assignedClasses: assignedClasses,
+        isClassTeacher: !!classTeacherOf,
+        classTeacherOf: classTeacherOf ? classTeacherOf.class_name : null,
+        status: s.isActive !== false ? 'Active' : 'Inactive'
+      };
+    }));
+
+    // Sort by name
+    staffData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    console.log(`✅ Found ${totalStaff} staff members`);
+    console.log('========================================\n');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Staff data retrieved successfully',
+      data: {
+        summary: {
+          totalStaff,
+          totalTeachers,
+          adminStaff,
+          supportStaff,
+          presentToday,
+          absentToday
+        },
+        staff: staffData
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ GET ALL STAFF ERROR:', error.message);
+    console.error('Stack:', error.stack);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
 module.exports = {
   getDashboardOverview,
   getClassList,
@@ -1017,5 +1121,6 @@ module.exports = {
   getFinancialReports,
   getAllStudents,
   getStudentFees,
-  getFeesOverview
+  getFeesOverview,
+  getAllStaff
 };

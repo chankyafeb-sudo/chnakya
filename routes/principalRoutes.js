@@ -76,6 +76,18 @@ router.get('/students/all/:school_id',
 );
 
 // ============================================
+// STAFF MANAGEMENT
+// ============================================
+router.get('/staff/all/:school_id',
+  principalOnly,
+  (req, res, next) => {
+    console.log('👨‍🏫 Get All Staff - Filters:', req.query);
+    next();
+  },
+  principalController.getAllStaff
+);
+
+// ============================================
 // FEE MANAGEMENT
 // ============================================
 router.get('/fees/student/:student_id',
@@ -96,6 +108,6 @@ router.get('/fees/overview/:school_id',
   principalController.getFeesOverview
 );
 
-console.log('✅ Principal routes loaded - 8 endpoints registered');
+console.log('✅ Principal routes loaded - 9 endpoints registered');
 
 module.exports = router;
