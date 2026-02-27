@@ -131,11 +131,11 @@ const getAttendanceByClassId = async (req, res) => {
 // ============================================
 const getStudentsByStaffId = async (req, res) => {
     console.log('\n========================================');
-    console.log('👥 GET STUDENTS BY STAFF REQUEST');
+    console.log('👥 GET STUDENTS WITH ATTENDANCE REQUEST');
     console.log('========================================');
 
     try {
-        // ✅ FIX: Handle both parameter names (staffid and teacherId)
+        // ✅ Handle both parameter names (staffid and teacherId)
         const staffId = req.params.staffid || req.params.teacherId;
         
         console.log('Staff ID:', staffId);
@@ -164,22 +164,78 @@ const getStudentsByStaffId = async (req, res) => {
         console.log(`✅ Found class: ${classDoc.class_name}`);
         console.log(`📚 Class ID: ${classDoc._id}`);
 
-        // Get all students in this class with FULL DETAILS
+        // Get all students in this class
         const students = await Student.find({ class_id: classDoc._id })
             .select('name rollnumber photo gender mobile email dob address father_name mother_name')
             .lean();
 
         console.log(`✅ Found ${students.length} students`);
-        console.log('📦 STUDENTS DATA SENDING TO FRONTEND:');
-        console.log(JSON.stringify(students, null, 2));
+
+        // ✅ GET TODAY'S ATTENDANCE
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(today);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        console.log('📅 Today:', today.toISOString().split('T')[0]);
+
+        // Get today's attendance for this class
+        const attendanceRecords = await Attendance.find({
+            class_id: classDoc._id,
+            date: { $gte: today, $lte: todayEnd }
+        })
+        .select('student_id status notes')
+        .lean();
+
+        console.log(`✅ Found ${attendanceRecords.length} attendance records for today`);
+
+        // Create a map of student_id -> attendance
+        const attendanceMap = {};
+        attendanceRecords.forEach(record => {
+            attendanceMap[record.student_id.toString()] = {
+                status: record.status,
+                notes: record.notes || ''
+            };
+        });
+
+        // ✅ MERGE: Students + Today Attendance
+        const studentsWithAttendance = students.map(student => {
+            const attendance = attendanceMap[student._id.toString()];
+            
+            return {
+                _id: student._id,
+                name: student.name,
+                rollnumber: student.rollnumber,
+                photo: student.photo,
+                gender: student.gender,
+                mobile: student.mobile,
+                email: student.email,
+                dob: student.dob,
+                address: student.address,
+                father_name: student.father_name,
+                mother_name: student.mother_name,
+                // ✅ TODAY ATTENDANCE
+                attendance: {
+                    status: attendance ? attendance.status : 'not_marked',
+                    notes: attendance ? attendance.notes : '',
+                    marked: !!attendance,
+                    date: today.toISOString().split('T')[0]
+                }
+            };
+        });
+
+        console.log('📦 STUDENTS WITH ATTENDANCE DATA SENDING TO FRONTEND:');
+        console.log(JSON.stringify(studentsWithAttendance, null, 2));
         console.log('========================================\n');
 
         return res.status(200).json({
             success: true,
             className: classDoc.class_name,
             classId: classDoc._id,
-            count: students.length,
-            students: students
+            date: today.toISOString().split('T')[0],
+            count: studentsWithAttendance.length,
+            markedCount: attendanceRecords.length,
+            students: studentsWithAttendance
         });
 
     } catch (error) {
@@ -191,7 +247,6 @@ const getStudentsByStaffId = async (req, res) => {
         });
     }
 };
-
 // ============================================
 // POST STUDENTS BY STAFF ID (legacy)
 // ============================================
