@@ -126,31 +126,21 @@ const getAttendanceByClassId = async (req, res) => {
     }
 };
 
+
 // ============================================
 // GET STUDENTS BY STAFF ID (Class Teacher ke students with FULL DETAILS)
 // ============================================
 const getStudentsByStaffId = async (req, res) => {
     console.log('\n========================================');
-    console.log('👥 GET STUDENTS WITH ATTENDANCE REQUEST');
+    console.log('👥 GET STUDENTS BY STAFF REQUEST');
     console.log('========================================');
 
     try {
-        // ✅ Handle both parameter names (staffid and teacherId)
-        const staffId = req.params.staffid || req.params.teacherId;
-        
-        console.log('Staff ID:', staffId);
-        console.log('All params:', JSON.stringify(req.params));
-
-        if (!staffId) {
-            console.log('❌ No staff ID found in parameters');
-            return res.status(400).json({
-                success: false,
-                message: 'Staff ID is required'
-            });
-        }
+        const { staffid } = req.params;
+        console.log('Staff ID:', staffid);
 
         // Find class where this staff is class teacher
-        const classDoc = await ClassModel.findOne({ class_teacher: staffId })
+        const classDoc = await ClassModel.findOne({ class_teacher: staffid })
             .lean();
 
         if (!classDoc) {
@@ -164,77 +154,33 @@ const getStudentsByStaffId = async (req, res) => {
         console.log(`✅ Found class: ${classDoc.class_name}`);
         console.log(`📚 Class ID: ${classDoc._id}`);
 
-        // Get all students in this class (minimal fields)
+        // Get all students in this class with FULL DETAILS
         const students = await Student.find({ class_id: classDoc._id })
-            .select('name rollnumber photo')
+            .select('name rollnumber photo gender mobile email dob address father_name mother_name')
             .lean();
 
         console.log(`✅ Found ${students.length} students`);
-
-        // ✅ GET TODAY'S ATTENDANCE
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(today);
-        todayEnd.setHours(23, 59, 59, 999);
-
-        console.log('📅 Today:', today.toISOString().split('T')[0]);
-
-        // Get today's attendance for this class
-        const attendanceRecords = await Attendance.find({
-            class_id: classDoc._id,
-            date: { $gte: today, $lte: todayEnd }
-        })
-        .select('student_id status notes')
-        .lean();
-
-        console.log(`✅ Found ${attendanceRecords.length} attendance records for today`);
-
-        // Create a map of student_id -> attendance
-        const attendanceMap = {};
-        attendanceRecords.forEach(record => {
-            attendanceMap[record.student_id.toString()] = {
-                status: record.status,
-                notes: record.notes || ''
-            };
-        });
-
-        // ✅ BUILD ATTENDANCE ARRAY (minimal format)
-        const attendance = students.map(student => {
-            const attendanceData = attendanceMap[student._id.toString()];
-            
-            return {
-                student_id: student._id,
-                name: student.name,
-                rollnumber: student.rollnumber,
-                photo: student.photo,
-                status: attendanceData ? attendanceData.status : 'not_marked',
-                notes: attendanceData ? attendanceData.notes : '',
-                marked: !!attendanceData
-            };
-        });
-
-        console.log('📦 ATTENDANCE DATA SENDING TO FRONTEND:');
-        console.log(JSON.stringify(attendance, null, 2));
+        console.log('📦 STUDENTS DATA SENDING TO FRONTEND:');
+        console.log(JSON.stringify(students, null, 2));
         console.log('========================================\n');
 
         return res.status(200).json({
             success: true,
             className: classDoc.class_name,
-            date: today.toISOString().split('T')[0],
-            count: attendance.length,
-            markedCount: attendanceRecords.length,
-            attendance: attendance
+            classId: classDoc._id,
+            count: students.length,
+            students: students
         });
 
     } catch (error) {
         console.error('❌ GET STUDENTS ERROR:', error.message);
-        console.error('Stack:', error.stack);
         return res.status(500).json({
             success: false,
             message: 'Server error'
         });
     }
 };
+
 // ============================================
 // POST STUDENTS BY STAFF ID (legacy)
 // ============================================
